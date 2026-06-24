@@ -20,6 +20,10 @@ jobs:
       # app's env so the endpoint's "Bearer" auth check passes. Leave unset if
       # the endpoint has no auth gate.
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      # Direct Supabase REST keep-alive. Full URL (incl. ?select=...&limit=1)
+      # and the project's anon key, both stored as repository secrets.
+      SUPABASE_REST_URL: ${{ secrets.SUPABASE_REST_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
     steps:
       - name: Ping each endpoint
         run: |
@@ -65,5 +69,30 @@ jobs:
           echo "Pinged $total endpoint(s), $failures failure(s)."
 
           if [ "$failures" -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: Ping Supabase REST (restaurants)
+        run: |
+          set -uo pipefail
+
+          if [ -z "${SUPABASE_REST_URL:-}" ] || [ -z "${VITE_SUPABASE_ANON_KEY:-}" ]; then
+            echo "❌ SUPABASE_REST_URL or VITE_SUPABASE_ANON_KEY secret is not set."
+            echo "Add them under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+          # Direct Supabase REST API needs BOTH the apikey header and a Bearer
+          # token (the anon key for both). Capture only the status code so the
+          # URL/key never reach the (public) logs.
+          code="$(curl -sS -m 30 --retry 3 --retry-delay 5 \
+                    -H "apikey: ${VITE_SUPABASE_ANON_KEY}" \
+                    -H "Authorization: Bearer ${VITE_SUPABASE_ANON_KEY}" \
+                    -o /dev/null -w '%{http_code}' "${SUPABASE_REST_URL}" || echo "000")"
+
+          if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+            echo "✅ [supabase-restaurants] -> $code"
+          else
+            echo "❌ [supabase-restaurants] -> $code"
             exit 1
           fi
