@@ -2,9 +2,11 @@ name: Scheduled sync
 
 on:
   schedule:
-    # Every hour, at 17 minutes past (off-the-hour to avoid GitHub's busiest
-    # scheduling slots). Change to "0 6 * * *" for once-daily. See crontab.guru.
-    - cron: "17 * * * *"
+    # Every 4 days at 06:17 UTC (days 1,5,9,13,17,21,25,29 of each month).
+    # Off-the-hour minute avoids GitHub's busiest scheduling slots.
+    # NOTE: the day counter resets at month start, so the gap from day 29 to
+    # the next day 1 is shorter than 4 days. See crontab.guru.
+    - cron: "17 6 */4 * *"
   workflow_dispatch: {} # allow manual runs from the Actions tab
 
 jobs:
