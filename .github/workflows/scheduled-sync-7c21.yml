@@ -2,9 +2,9 @@ name: Scheduled sync
 
 on:
   schedule:
-    # TESTING: every 5 minutes (GitHub's minimum interval). Change back to
-    # "0 6 * * *" (06:00 UTC daily) when done testing. See https://crontab.guru.
-    - cron: "*/5 * * * *"
+    # Every hour, at 17 minutes past (off-the-hour to avoid GitHub's busiest
+    # scheduling slots). Change to "0 6 * * *" for once-daily. See crontab.guru.
+    - cron: "17 * * * *"
   workflow_dispatch: {} # allow manual runs from the Actions tab
 
 jobs:
