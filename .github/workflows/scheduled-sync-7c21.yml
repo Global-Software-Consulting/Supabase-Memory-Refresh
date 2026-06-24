@@ -1,0 +1,67 @@
+name: Scheduled sync
+
+on:
+  schedule:
+    # TESTING: every 5 minutes (GitHub's minimum interval). Change back to
+    # "0 6 * * *" (06:00 UTC daily) when done testing. See https://crontab.guru.
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    env:
+      # Stored as a repository secret. One endpoint per line, with an
+      # optional label after the URL: "https://...   my-project"
+      ENDPOINTS: ${{ secrets.ENDPOINTS }}
+      # Stored as a repository secret. Must match the CRON_SECRET set in the
+      # app's env so the endpoint's "Bearer" auth check passes. Leave unset if
+      # the endpoint has no auth gate.
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Ping each endpoint
+        run: |
+          set -uo pipefail
+
+          if [ -z "${ENDPOINTS:-}" ]; then
+            echo "❌ ENDPOINTS secret is empty or not set."
+            echo "Add it under Settings → Secrets and variables → Actions → New repository secret."
+            exit 1
+          fi
+
+          failures=0
+          total=0
+
+          # Read the secret line by line: skip blanks and comments.
+          while IFS= read -r line || [ -n "$line" ]; do
+            line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            [ -z "$line" ] && continue
+            case "$line" in \#*) continue ;; esac
+
+            url="$(echo "$line" | awk '{print $1}')"
+            label="$(echo "$line" | awk '{$1=""; sub(/^ /,""); print}')"
+            [ -z "$label" ] && label="project-$((total + 1))"
+
+            total=$((total + 1))
+
+            # -s silent, -S show errors, -L follow redirects, -m 30 timeout,
+            # --retry for transient flakiness. Capture only the HTTP status code
+            # so the URL is never printed to the (public) logs.
+            code="$(curl -sS -L -m 30 --retry 3 --retry-delay 5 \
+                      -H "Authorization: Bearer ${CRON_SECRET:-}" \
+                      -o /dev/null -w '%{http_code}' "$url" || echo "000")"
+
+            if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+              echo "✅ [$label] -> $code"
+            else
+              echo "❌ [$label] -> $code"
+              failures=$((failures + 1))
+            fi
+          done <<< "$ENDPOINTS"
+
+          echo "-----------------------------------------"
+          echo "Pinged $total endpoint(s), $failures failure(s)."
+
+          if [ "$failures" -gt 0 ]; then
+            exit 1
+          fi
